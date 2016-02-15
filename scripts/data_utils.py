@@ -51,7 +51,43 @@ def load_mat(filename):
     arr = scipy.io.loadmat(os.path.join(DATA_DIR, filename))
     return arr
 
-def load_labels():
+def load_labels_as_dict():
+    """
+    :description: Loads labels for each row in the dataset. Labels returned
+        as a dict where row number is the key and the label is the value, which 
+        is one of {1 = orlando, 2 = nyc, 3 = pitt}.
+    """
+    gps = load_mat(LABLES_FILENAME)['GPS_Compass']
+   
+    # create mapping of <row number, label>
+    # 1 = orlando, 2 = nyc, 3 = pitt
+    labels = dict()
+    for idx, (latitude, longitude, angle) in enumerate(gps):
+
+        # orlando
+        if latitude > ORLANDO_LAT_MIN and latitude < ORLANDO_LAT_MAX \
+                and longitude > ORLANDO_LONG_MIN and longitude < ORLANDO_LONG_MAX:
+            labels[idx] = 1
+
+        # nyc
+        elif latitude > NYC_LAT_MIN and latitude < NYC_LAT_MAX \
+                and longitude > NYC_LONG_MIN and longitude < NYC_LONG_MAX:
+            labels[idx] = 2
+
+        # pitt
+        elif latitude > PITT_LAT_MIN and latitude < PITT_LAT_MAX \
+                and longitude > PITT_LONG_MIN and longitude < PITT_LONG_MAX:
+            labels[idx] = 3
+
+        # invalid latitude or longitude
+        else:
+            raise ValueError('Latitude or longitude not in valid range.\
+                               Longitude: {}\tLatitude: {}'.format(latitude, longitude))
+
+    return labels
+
+
+def load_labels_as_list():
     """
     :description: Loads labels for each row in the dataset. Labels returned
         as a list of values where the index of the value is the XXXXXXX row
@@ -146,11 +182,10 @@ def load_features_and_labels(feature_set='all'):
 
     return train, y_train, val, y_val, test, y_test
 
-def calculate_rgb_values(imgs):
-    pass
-
-def subtract_rgb_values(imgs, rgb_values):
-    pass
+def subtract_mean_image(imgs):
+    mean_rgb_values = imgs.mean(axis=(0,1,2))
+    imgs -= mean_rgb_values
+    return imgs
 
 def resize_image(img, side_length):
     """
@@ -173,8 +208,9 @@ def resize_image(img, side_length):
     
 def write_images_to_directory(output_dir, imgs, filenames):
     for img, filename in zip(imgs, filenames):
-        filepath = os.path.join(output_dir, filename)
-        cv2.imwrite(filepath, img)
+        if filename is not None:
+            filepath = os.path.join(output_dir, filename)
+            cv2.imwrite(filepath, img)
 
 def get_image_filepaths(dataset_dir):
     pattern = os.path.join(dataset_dir, '*.jpg')
@@ -186,19 +222,30 @@ def preprocess_crcv(dataset_dir, output_dir):
     # get filepaths of images to process and their corresponding ids
     filepaths, img_filenames = get_image_filepaths(dataset_dir)
     num_imgs = len(filepaths)
+
+    # allocate containers for processed images and filenames
     imgs = np.empty((num_imgs, IMAGE_SIDE_LENGTH, IMAGE_SIDE_LENGTH, NUM_IMAGE_CHANNELS))
-
+    filenames = [None] * num_imgs
+    
     # load and resize each image
-    for idx, filepath in enumerate(filepaths):
+    for idx, (filepath, filename) in enumerate(zip(filepaths, img_filenames)):
+        print('processing filepath: {}'.format(filepath))
         img = cv2.imread(filepath)
-        resized_img = resize_image(img, IMAGE_SIDE_LENGTH)
-        imgs[idx] = resized_img
+        if img is None:
+            print('image filepath failed to load: {}'.format(filepath))
+        else:
+            resized_img = resize_image(img, IMAGE_SIDE_LENGTH)
+            imgs[idx] = resized_img
+            filenames[idx] = filename
 
-    # write the unpreprocessed images to dir
-    write_images_to_directory(output_dir, imgs, img_filenames)
+    # subtract mean image from images
+    imgs = subtract_mean_image(imgs)
+            
+    # write the preprocessed images to dir
+    write_images_to_directory(output_dir, imgs, filenames)
         
 if __name__ == '__main__':
     dataset_dir = os.path.join(DATA_DIR, 'small_dataset')
-    output_dir = os.path.join(OUTPUT_DIR, 'small_dataset_preprocessed')
+    output_dir = os.path.join(OUTPUT_DIR, 'small_dataset')
     preprocess_crcv(dataset_dir, output_dir)
     
