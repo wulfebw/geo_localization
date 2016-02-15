@@ -1,27 +1,33 @@
 """
 :description: Utilities for loading in, preprocessing, and organizing data.
 """
-import matplotlib as mpl
-mpl.use('Agg')
-import matplotlib.pyplot as plt
+import cv2
+import glob
 import numpy as np
 import os
 import scipy.io
 
-# filenames and locations
+# filename and directory constants
 DATA_DIR = '../data'
 CRCV_DIR = '/crcv'
-OUTPUTS_DIR = '../outputs'
+PREPROCESSED_CRCV_DIR = '/preprocessed_crcv'
+OUTPUT_DIR = '../outputs'
 LABLES_FILENAME = 'GPS_Long_Lat_Compass.mat'
 HIST_FILENAME = 'Color_hist.mat'
 GIST_FILENAME = 'GIST.mat'
 
-# data constants
+# data split constants
 TRAIN_RATIO = .8
 VAL_RATIO = .1
 TEST_RATIO = .1
+
+# feature constants
 NUM_HIST_FEATURES = 60
 NUM_HIST_ROWS_PER_LOCATION = 5
+
+# preprocessing constants
+IMAGE_SIDE_LENGTH = 256
+NUM_IMAGE_CHANNELS = 3
 
 # latitude and longitude min and max for each city
 ORLANDO_LAT_MIN = 28
@@ -140,15 +146,59 @@ def load_features_and_labels(feature_set='all'):
 
     return train, y_train, val, y_val, test, y_test
 
-def load_crcv():
+def calculate_rgb_values(imgs):
     pass
 
+def subtract_rgb_values(imgs, rgb_values):
+    pass
+
+def resize_image(img, side_length):
+    """
+    :description: Resize an image proportionally.
+    """
+    # resize proportionally and then crop to avoid warping image
+    h, w, c = img.shape
+    new_h, new_w = side_length, side_length
+    if h > w:
+        new_h = side_length * int(h / float(w))
+    else:
+        new_w = side_length * int(w / float(h))
+
+    # crop center
+    img = cv2.resize(img, (new_h, new_w))
+    h_offset = (new_h - side_length) / 2
+    w_offset = (new_w - side_length) / 2
+    img = img[h_offset:h_offset + side_length, w_offset:w_offset + side_length]
+    return img
+    
+def write_images_to_directory(output_dir, imgs, filenames):
+    for img, filename in zip(imgs, filenames):
+        filepath = os.path.join(output_dir, filename)
+        cv2.imwrite(filepath, img)
+
+def get_image_filepaths(dataset_dir):
+    pattern = os.path.join(dataset_dir, '*.jpg')
+    filepaths = glob.glob(pattern)
+    filenames = [filepath[filepath.rindex('/') + 1:] for filepath in filepaths]
+    return filepaths, filenames
+    
+def preprocess_crcv(dataset_dir, output_dir):
+    # get filepaths of images to process and their corresponding ids
+    filepaths, img_filenames = get_image_filepaths(dataset_dir)
+    num_imgs = len(filepaths)
+    imgs = np.empty((num_imgs, IMAGE_SIDE_LENGTH, IMAGE_SIDE_LENGTH, NUM_IMAGE_CHANNELS))
+
+    # load and resize each image
+    for idx, filepath in enumerate(filepaths):
+        img = cv2.imread(filepath)
+        resized_img = resize_image(img, IMAGE_SIDE_LENGTH)
+        imgs[idx] = resized_img
+
+    # write the unpreprocessed images to dir
+    write_images_to_directory(output_dir, imgs, img_filenames)
+        
 if __name__ == '__main__':
-    train, y_train, val, y_val, test, y_test = load_features_and_labels()
-    print train.shape
-    print y_train.shape
-    print val.shape
-    print y_val.shape
-    print test.shape
-    print y_test.shape
+    dataset_dir = os.path.join(DATA_DIR, 'small_dataset')
+    output_dir = os.path.join(OUTPUT_DIR, 'small_dataset_preprocessed')
+    preprocess_crcv(dataset_dir, output_dir)
     
